@@ -22,24 +22,21 @@ package xmss
 
 import (
 	"bytes"
-	"encoding/json"
+	"github.com/AidosKuneen/numcpu"
 	"runtime"
 	"testing"
-
-	"github.com/AidosKuneen/numcpu"
-	"github.com/vmihailenco/msgpack"
 )
 
 func TestXMSS2(t *testing.T) {
 	n := numcpu.NumCPU()
 	npref := runtime.GOMAXPROCS(n)
 	seed := generateSeed()
-	mer := NewMerkle(10, seed)
+	sk, pk := NewXMSSKeyPair(10, seed)
 	msg := []byte("This is a test for XMSS.")
 	var pre []byte
 	for i := 0; i < 1<<10; i++ {
-		sig := mer.Sign(msg)
-		if !Verify(sig, msg, mer.PublicKey()) {
+		sig := sk.Sign(msg)
+		if !pk.Verify(sig, msg) {
 			t.Error("XMSS sig is incorrect")
 		}
 		if pre != nil && bytes.Equal(pre, sig) {
@@ -54,27 +51,28 @@ func TestXMSS3(t *testing.T) {
 	n := numcpu.NumCPU()
 	npref := runtime.GOMAXPROCS(n)
 	seed := generateSeed()
-	mer := NewMerkle(10, seed)
+	sk, pk := NewXMSSKeyPair(10, seed)
 	msg := []byte("This is a test for XMSS.")
-	sig := mer.Sign(msg)
+	sig := sk.Sign(msg)
 	msg[0] = 0
-	if Verify(sig, msg, mer.PublicKey()) {
+	if pk.Verify(sig, msg) {
 		t.Error("XMSS sig is incorrect")
 	}
 	runtime.GOMAXPROCS(npref)
 }
+
 func TestXMSS4(t *testing.T) {
 	n := numcpu.NumCPU()
 	npref := runtime.GOMAXPROCS(n)
 	seed := generateSeed()
-	mer := NewMerkle(2, seed)
+	sk, pk := NewXMSSKeyPair(2, seed)
 	msg := []byte("This is a test for XMSS.")
-	sig := mer.Sign(msg)
-	if !Verify(sig, msg, mer.PublicKey()) {
+	sig := sk.Sign(msg)
+	if !pk.Verify(sig, msg) {
 		t.Error("XMSS sig is incorrect")
 	}
 	msg[0] = 0
-	if Verify(sig, msg, mer.PublicKey()) {
+	if pk.Verify(sig, msg) {
 		t.Error("XMSS sig is incorrect")
 	}
 	runtime.GOMAXPROCS(npref)
@@ -83,69 +81,12 @@ func TestXMSS16(t *testing.T) {
 	n := numcpu.NumCPU()
 	npref := runtime.GOMAXPROCS(n)
 	seed := generateSeed()
-	mer := NewMerkle(16, seed)
+	sk, pk := NewXMSSKeyPair(16, seed)
 	msg := []byte("This is a test for XMSS height=16.")
-	sig := mer.Sign(msg)
-	if !Verify(sig, msg, mer.PublicKey()) {
+	sig := sk.Sign(msg)
+	if !pk.Verify(sig, msg) {
 		t.Error("XMSS sig is incorrect")
 	}
-	runtime.GOMAXPROCS(npref)
-}
-
-func TestXMSSMarshal(t *testing.T) {
-	n := numcpu.NumCPU()
-	npref := runtime.GOMAXPROCS(n)
-	seed := generateSeed()
-	mer := NewMerkle(10, seed)
-	msg := []byte("This is a test for XMSS height=16.")
-	dat, err := json.Marshal(mer)
-	if err != nil {
-		t.Error(err)
-	}
-	t.Log("marshalled Merkle", string(dat))
-	t.Log("len of marshalled Merkle", len(dat))
-	mer2 := Merkle{}
-	if err = json.Unmarshal(dat, &mer2); err != nil {
-		t.Error(err)
-	}
-	sig := mer.Sign(msg)
-	sig2 := mer2.Sign(msg)
-	if !bytes.Equal(sig, sig2) {
-		t.Error("invlaid json marshal")
-	}
-
-	mdat, err := msgpack.Marshal(mer)
-	if err != nil {
-		t.Error(err)
-	}
-	t.Log("marshalled Merkle", len(mdat))
-	mmer := Merkle{}
-	if err = msgpack.Unmarshal(mdat, &mmer); err != nil {
-		t.Error(err)
-	}
-	sig = mer.Sign(msg)
-	msig := mmer.Sign(msg)
-	if !bytes.Equal(sig, msig) {
-		t.Error("invlaid msgpack marshal")
-	}
-
-	var buf bytes.Buffer
-	enc := msgpack.NewEncoder(&buf).StructAsArray(true)
-	if err = enc.Encode(mer); err != nil {
-		t.Fatal(err)
-	}
-	t.Log("marshalled Merkle", buf.Len())
-	dec := msgpack.NewDecoder(&buf)
-	mmer2 := Merkle{}
-	if err := dec.Decode(&mmer2); err != nil {
-		t.Fatal(err)
-	}
-	sig = mer.Sign(msg)
-	msig2 := mmer2.Sign(msg)
-	if !bytes.Equal(sig, msig2) {
-		t.Error("invlaid msgpack marshal")
-	}
-
 	runtime.GOMAXPROCS(npref)
 }
 
@@ -154,18 +95,19 @@ func BenchmarkXMSS16(b *testing.B) {
 	npref := runtime.GOMAXPROCS(n)
 	seed := generateSeed()
 	b.ResetTimer()
-	_ = NewMerkle(16, seed)
+	_, _ = NewXMSSKeyPair(16, seed)
 	runtime.GOMAXPROCS(npref)
 }
+
 func BenchmarkXMSS16Sign(b *testing.B) {
 	n := numcpu.NumCPU()
 	npref := runtime.GOMAXPROCS(n)
 	seed := generateSeed()
-	mer := NewMerkle(16, seed)
+	sk, _ := NewXMSSKeyPair(16, seed)
 	msg := []byte("This is a test for XMSS.")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = mer.Sign(msg)
+		_ = sk.Sign(msg)
 	}
 	runtime.GOMAXPROCS(npref)
 }
@@ -173,12 +115,12 @@ func BenchmarkXMSS16Veri(b *testing.B) {
 	n := numcpu.NumCPU()
 	npref := runtime.GOMAXPROCS(n)
 	seed := generateSeed()
-	mer := NewMerkle(16, seed)
+	sk, pk := NewXMSSKeyPair(16, seed)
 	msg := []byte("This is a test for XMSS.")
-	sig := mer.Sign(msg)
+	sig := sk.Sign(msg)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		Verify(sig, msg, mer.PublicKey())
+		pk.Verify(sig, msg)
 	}
 	runtime.GOMAXPROCS(npref)
 }
@@ -188,7 +130,7 @@ func BenchmarkXMSS20(b *testing.B) {
 	npref := runtime.GOMAXPROCS(n)
 	seed := generateSeed()
 	b.ResetTimer()
-	_ = NewMerkle(20, seed)
+	_, _ = NewXMSSKeyPair(20, seed)
 	runtime.GOMAXPROCS(npref)
 }
 
@@ -198,7 +140,7 @@ func BenchmarkXMSS10(b *testing.B) {
 	seed := generateSeed()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = NewMerkle(10, seed)
+		_, _ = NewXMSSKeyPair(10, seed)
 	}
 	runtime.GOMAXPROCS(npref)
 }
@@ -206,11 +148,11 @@ func BenchmarkXMSS10Sign(b *testing.B) {
 	n := numcpu.NumCPU()
 	npref := runtime.GOMAXPROCS(n)
 	seed := generateSeed()
-	mer := NewMerkle(10, seed)
+	sk, _ := NewXMSSKeyPair(10, seed)
 	msg := []byte("This is a test for XMSS.")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = mer.Sign(msg)
+		_ = sk.Sign(msg)
 	}
 	runtime.GOMAXPROCS(npref)
 }
@@ -218,12 +160,12 @@ func BenchmarkXMSS10Veri(b *testing.B) {
 	n := numcpu.NumCPU()
 	npref := runtime.GOMAXPROCS(n)
 	seed := generateSeed()
-	mer := NewMerkle(10, seed)
+	sk, pk := NewXMSSKeyPair(10, seed)
 	msg := []byte("This is a test for XMSS.")
-	sig := mer.Sign(msg)
+	sig := sk.Sign(msg)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		Verify(sig, msg, mer.PublicKey())
+		pk.Verify(sig, msg)
 	}
 	runtime.GOMAXPROCS(npref)
 }
