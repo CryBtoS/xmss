@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Aidos Developer
+// Copyright (c) 2018 Benjamin Schlosser
 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,107 +22,181 @@ package xmss
 
 import (
 	"bytes"
+	"crypto"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
-
-	"github.com/vmihailenco/msgpack"
 )
 
-//PrivKey is a private key of XMSS.
-type PrivKey struct {
-	msgPRF  *prf //SK_PRF in draft, used to get hash of index(randomness r in draft) when signing by XMSS.
-	wotsPRF *prf //S in draft, used to generate private key elements of WOTS.
-	pubPRF  *prf //SEED in draft , used to make public keys of WOTS.
-	root    []byte
-}
-type privkey struct {
-	MsgSeed  []byte
-	WotsSeed []byte
-	PubSeed  []byte
-	Root     []byte
+type XMSSParameters struct {
+	//oid
+	Height uint32
 }
 
-func (x *PrivKey) exports() *privkey {
-	return &privkey{
-		MsgSeed:  x.msgPRF.seed,
-		WotsSeed: x.wotsPRF.seed,
-		PubSeed:  x.pubPRF.seed,
-		Root:     x.root,
-	}
-}
-func (x *PrivKey) imports(s *privkey) {
-	x.msgPRF = newPRF(s.MsgSeed)
-	x.wotsPRF = newPRF(s.WotsSeed)
-	x.pubPRF = newPRF(s.PubSeed)
-	x.root = s.Root
+// XMSS private key
+type privateKey struct {
+	*publicKey      // public part (pubPRF, root)
+	msgPRF  *prf    // prf for randomization of message digest
+	wotsPRF *prf    // prf for generating WOTS+ private keys
+	m       *merkle // state
 }
 
-//MarshalJSON  marshals PrivKey into valid JSON.
-func (x *PrivKey) MarshalJSON() ([]byte, error) {
-	return json.Marshal(x.exports())
+type PrivateKey struct {
+	PublicKey
+	Index         uint32 // index of next unused WOTS+ private key
+	SecretKeyPRF  []byte // seed for randomization of message digest
+	SecretKeySeed []byte // seed for generating WOTS+ private keys
 }
 
-//UnmarshalJSON  unmarshals JSON to PrivKey.
-func (x *PrivKey) UnmarshalJSON(b []byte) error {
-	var s privkey
-	err := json.Unmarshal(b, &s)
-	if err == nil {
-		x.imports(&s)
-	}
-	return err
+// XMSS public key
+type publicKey struct {
+	XMSSParameters
+	// TODO: check if the byte array here is ok or a prf-object has to be created hier
+	publicSeed []byte // publicSeed for randomization of hashes
+	root       []byte // root of merkle tree
 }
 
-//EncodeMsgpack  marshals PrivKey into valid msgpack.
-func (x *PrivKey) EncodeMsgpack(enc *msgpack.Encoder) error {
-	return enc.Encode(x.exports())
-}
-
-//DecodeMsgpack  unmarshals msgpack to PrivKey.
-func (x *PrivKey) DecodeMsgpack(dec *msgpack.Decoder) error {
-	var s privkey
-	if err := dec.Decode(&s); err != nil {
-		return err
-	}
-	x.imports(&s)
-	return nil
-}
-
-func (x *PrivKey) newWotsPrivKey(addrs addr, priv wotsPrivKey) {
-	s := make([]byte, 32)
-	x.wotsPRF.sum(addrs, s)
-	p := newPRF(s)
-	for i := range priv {
-		p.sumInt(uint32(i), priv[i])
-	}
-}
-
-//PublicKey for xmss
 type PublicKey struct {
-	Height byte
-	Root   []byte
-	Seed   []byte
+	XMSSParameters
+	PublicSeed []byte // publicSeed for randomization of hashes
+	Root       []byte // root of merkle tree
 }
 
-//Serialize returns serialized bytes of XMSS PublicKey.
-func (p *PublicKey) Serialize() []byte {
-	key := make([]byte, 1+n+n)
-	key[0] = p.Height
-	copy(key[1:], p.Root)
-	copy(key[1+n:], p.Seed)
-	return key
-}
-
-//DeserializePK deserialized bytes to XMSS PublicKey.
-func DeserializePK(key []byte) (*PublicKey, error) {
-	if len(key) != 65 {
-		return nil, errors.New("invalid bytes length")
+func NewXMSSKeyPair(height uint32, privateSeed []byte) (*privateKey, *publicKey) {
+	mac := hmac.New(sha256.New, privateSeed)
+	if _, err := mac.Write([]byte{1}); err != nil {
+		panic(err)
 	}
+	secretKeySeed := mac.Sum(nil)
+	mac.Reset()
+	if _, err := mac.Write([]byte{2}); err != nil {
+		panic(err)
+	}
+	secretKeyPRF := mac.Sum(nil)
+	mac.Reset()
+	if _, err := mac.Write([]byte{3}); err != nil {
+		panic(err)
+	}
+	publicSeed := mac.Sum(nil)
+	return NewXMSSKeyPairWithParams(height, secretKeySeed, secretKeyPRF, publicSeed, 0, 0)
+}
+
+func NewXMSSKeyPairWithParams(height uint32, secretKeySeed, secretKeyPRF, publicSeed []byte, layer uint32, tree uint64) (*privateKey, *publicKey) {
+	privateKey := new(privateKey)
+	publicKey := new(publicKey)
+	publicKey.XMSSParameters = XMSSParameters{Height: height}
+	publicKey.root = make([]byte, 32)
+	publicKey.publicSeed = publicSeed
+	privateKey.publicKey = publicKey
+	privateKey.msgPRF = newPRF(secretKeyPRF)
+	privateKey.wotsPRF = newPRF(secretKeySeed)
+	privateKey.initMerkle(height, layer, tree)
+
+	return privateKey, publicKey
+}
+
+// Public() returns the public key corresponding to priv
+func (priv *privateKey) Public() crypto.PublicKey {
+	return &priv.publicKey
+}
+
+func (priv *privateKey) Sign(msg []byte) ([]byte) {
+	index := make([]byte, 32)
+	binary.BigEndian.PutUint32(index[28:], priv.m.leaf)
+	r := make([]byte, 32*3)
+	priv.msgPRF.sum(index, r)
+	copy(r[32:], priv.root)
+	copy(r[64:], index)
+	hmsg := hashMsg(r, msg)
+	sigBody := priv.createSignatureBody(hmsg)
+	sig := &xmssSig{
+		index:       priv.m.leaf,
+		r:           r[:32],
+		xmssSigBody: sigBody,
+	}
+	result := sig.bytes()
+	priv.traverse()
+	return result
+}
+
+func (priv *privateKey) createSignatureBody(hmsg []byte) *xmssSigBody {
+	wsk := make(wotsPrivKey, wlen)
+	for i := range wsk {
+		wsk[i] = make([]byte, 32)
+	}
+	addrs := make(addr, 32)
+	addrs.set(adrLayer, priv.m.layer)
+	addrs.setTree(priv.m.tree)
+	addrs.set(adrOTS, priv.m.leaf)
+	priv.newWotsPrivKey(addrs, wsk)
+	pubPRF := newPRF(priv.publicSeed)
+	sig := wsk.sign(hmsg, pubPRF, addrs)
+	return &xmssSigBody{
+		sig:  sig,
+		auth: priv.m.auth,
+	}
+}
+
+func (priv *privateKey) newWotsPrivKey(addrs addr, sk wotsPrivKey) {
+	s := make([]byte, 32)
+	priv.wotsPRF.sum(addrs, s)
+	p := newPRF(s)
+	for i := range sk {
+		p.sumInt(uint32(i), sk[i])
+	}
+}
+
+func (priv *privateKey) Export() *PrivateKey {
+	return &PrivateKey{
+		PublicKey: PublicKey{
+			XMSSParameters: priv.XMSSParameters,
+			PublicSeed:     priv.publicSeed,
+			Root:           priv.root,
+		},
+		Index:         priv.m.leaf,
+		SecretKeyPRF:  priv.msgPRF.seed,
+		SecretKeySeed: priv.wotsPRF.seed,
+	}
+}
+
+func (priv *privateKey) Import(key *PrivateKey) {
+	priv.XMSSParameters = key.XMSSParameters
+	priv.publicSeed = key.PublicSeed
+	priv.root = key.Root
+	priv.m.leaf = key.Index
+	priv.msgPRF = newPRF(key.SecretKeyPRF)
+	priv.wotsPRF = newPRF(key.SecretKeySeed)
+	priv.initMerkle(priv.Height, 0, 0)
+}
+
+func (pub *publicKey) Verify(bsig, msg []byte) bool {
+	sig, err := bytes2sig(bsig, byte(pub.XMSSParameters.Height))
+	if err != nil {
+		return false
+	}
+	prf := newPRF(pub.publicSeed)
+	r := make([]byte, 32*3)
+	copy(r, sig.r)
+	copy(r[32:], pub.root)
+	binary.BigEndian.PutUint32(r[64+28:], sig.index)
+	hmsg := hashMsg(r, msg)
+	root := rootFromSig(sig.index, hmsg, sig.xmssSigBody, prf, 0, 0)
+	return bytes.Equal(root, pub.root)
+}
+
+func (pub *publicKey) Export() *PublicKey {
 	return &PublicKey{
-		Height: key[0],
-		Root:   key[1:33],
-		Seed:   key[33:65],
-	}, nil
+		XMSSParameters: pub.XMSSParameters,
+		PublicSeed:     pub.publicSeed,
+		Root:           pub.root,
+	}
+}
+
+func (pub *publicKey) Import(key *PublicKey) {
+	pub.Height = key.Height
+	pub.publicSeed = key.PublicSeed
+	pub.root = key.Root
 }
 
 func randHash(left, right []byte, p *prf, addrs addr, out []byte) {
@@ -168,15 +242,15 @@ type xmssSigBody struct {
 }
 
 type xmssSig struct {
-	idx uint32
-	r   []byte
+	index uint32
+	r     []byte
 	*xmssSigBody
 }
 
 func (x *xmssSig) bytes() []byte {
 	sigSize := 4 + n + wlen*n + len(x.auth)*n
 	sig := make([]byte, sigSize)
-	binary.BigEndian.PutUint32(sig, x.idx)
+	binary.BigEndian.PutUint32(sig, x.index)
 	copy(sig[4:], x.r)
 	sigBody := x.xmssSigBody.bytes()
 	copy(sig[4+n:], sigBody)
@@ -202,7 +276,7 @@ func bytes2sig(b []byte, h byte) (*xmssSig, error) {
 	}
 	body := bytes2sigBody(b[4+n:], height)
 	sig := &xmssSig{
-		idx:         binary.BigEndian.Uint32(b),
+		index:       binary.BigEndian.Uint32(b),
 		r:           b[4 : 4+n],
 		xmssSigBody: body,
 	}
@@ -221,71 +295,6 @@ func bytes2sigBody(b []byte, height int) *xmssSigBody {
 		body.auth[i] = b[n*wlen+n*i : n*wlen+n*(i+1)]
 	}
 	return body
-}
-
-//Sign signs by XMSS with MerkleTree.
-func (m *Merkle) Sign(msg []byte) []byte {
-	index := make([]byte, 32)
-	binary.BigEndian.PutUint32(index[28:], m.Leaf)
-	r := make([]byte, 32*3)
-	m.priv.msgPRF.sum(index, r)
-	copy(r[32:], m.priv.root)
-	copy(r[64:], index)
-	hmsg := hashMsg(r, msg)
-	sigBody := m.sign(hmsg)
-	sig := &xmssSig{
-		idx:         m.Leaf,
-		r:           r[:32],
-		xmssSigBody: sigBody,
-	}
-	result := sig.bytes()
-	m.Traverse() //never relocate the line to above
-	return result
-}
-
-func (m *Merkle) sign(hmsg []byte) *xmssSigBody {
-	wsk := make(wotsPrivKey, wlen)
-	for i := range wsk {
-		wsk[i] = make([]byte, 32)
-	}
-	addrs := make(addr, 32)
-	addrs.set(adrLayer, m.layer)
-	addrs.setTree(m.tree)
-	addrs.set(adrOTS, m.Leaf)
-	m.priv.newWotsPrivKey(addrs, wsk)
-	sig := wsk.sign(hmsg, m.priv.pubPRF, addrs)
-	return &xmssSigBody{
-		sig:  sig,
-		auth: m.auth,
-	}
-}
-
-//IndexFromSig returns index of merkle from the signature bsig.
-func IndexFromSig(bsig []byte) (uint32, error) {
-	if len(bsig) < 4 {
-		return 0, errors.New("invalid signature length")
-	}
-	return binary.BigEndian.Uint32(bsig), nil
-}
-
-//Verify verifies msg by XMSS.
-func Verify(bsig, msg, bpk []byte) bool {
-	pk, err := DeserializePK(bpk)
-	if err != nil {
-		return false
-	}
-	sig, err := bytes2sig(bsig, pk.Height)
-	if err != nil {
-		return false
-	}
-	prf := newPRF(pk.Seed)
-	r := make([]byte, 32*3)
-	copy(r, sig.r)
-	copy(r[32:], pk.Root)
-	binary.BigEndian.PutUint32(r[64+28:], sig.idx)
-	hmsg := hashMsg(r, msg)
-	root := rootFromSig(sig.idx, hmsg, sig.xmssSigBody, prf, 0, 0)
-	return bytes.Equal(root, pk.Root)
 }
 
 func rootFromSig(idx uint32, hmsg []byte, body *xmssSigBody, prf *prf, layer uint32, tree uint64) []byte {
