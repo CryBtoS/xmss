@@ -20,21 +20,11 @@
 
 package xmss
 
-import (
-	"bytes"
-	"crypto/hmac"
-	"encoding/binary"
-	"encoding/json"
-	"errors"
-
-	sha256 "github.com/AidosKuneen/sha256-simd"
-	"github.com/vmihailenco/msgpack"
-)
-
+/*
 //PrivKeyMT is a private key of XMSS^MT.
 type PrivKeyMT struct {
 	index  uint64
-	merkle []*Merkle
+	merkle []*merkle
 	h      uint32
 	d      uint32
 }
@@ -45,7 +35,7 @@ func NewPrivKeyMT(seed []byte, h, d uint32) (*PrivKeyMT, error) {
 		return nil, errors.New("invalid h or d")
 	}
 	p := PrivKeyMT{
-		merkle: make([]*Merkle, d),
+		merkle: make([]*merkle, d),
 		h:      h,
 		d:      d,
 	}
@@ -82,8 +72,8 @@ func (p *PrivKeyMT) SetLeafNo(n uint64) error {
 	return nil
 }
 
-//PublicKey returns public key (merkle root) of XMSS^MT
-func (p *PrivKeyMT) PublicKey() []byte {
+//publicKey returns public key (merkle root) of XMSS^MT
+func (p *PrivKeyMT) publicKey() []byte {
 	priv := p.merkle[p.d-1].priv
 	key := make([]byte, 1+n+n)
 	key[0] = (byte(p.h / 20)) << 4
@@ -152,8 +142,8 @@ func (p *PrivKeyMT) Sign(msg []byte) []byte {
 	if p.merkle[0] == nil || p.merkle[0].tree != idxTree {
 		p.merkle[0] = newMerkle(p.h/p.d, mpriv.wotsPRF.seed, mpriv.msgPRF.seed, mpriv.pubPRF.seed, 0, idxTree)
 	}
-	for p.merkle[0].Leaf < idxLeaf {
-		p.merkle[0].Traverse()
+	for p.merkle[0].leaf < idxLeaf {
+		p.merkle[0].traverse()
 	}
 	sig.sigs[0] = p.merkle[0].sign(hmsg)
 	root := p.merkle[0].priv.root
@@ -164,8 +154,8 @@ func (p *PrivKeyMT) Sign(msg []byte) []byte {
 		if p.merkle[j] == nil || p.merkle[j].tree != idxTree {
 			p.merkle[j] = newMerkle(p.h/p.d, mpriv.wotsPRF.seed, mpriv.msgPRF.seed, mpriv.pubPRF.seed, j, idxTree)
 		}
-		for p.merkle[j].Leaf < idxLeaf {
-			p.merkle[j].Traverse()
+		for p.merkle[j].leaf < idxLeaf {
+			p.merkle[j].traverse()
 		}
 		sig.sigs[j] = p.merkle[j].sign(root)
 		root = p.merkle[j].priv.root
@@ -194,7 +184,7 @@ func PublickeyMTHeader(h, d uint32) (byte, error) {
 	return header, nil
 }
 
-//Serialize returns serialized bytes of XMSS^MT PublicKey.
+//Serialize returns serialized bytes of XMSS^MT publicKey.
 func (p *PublicKeyMT) Serialize() ([]byte, error) {
 	var err error
 	key := make([]byte, 1+n+n)
@@ -209,7 +199,7 @@ func (p *PublicKeyMT) Serialize() ([]byte, error) {
 	return key, nil
 }
 
-//DeserializeMT deserialized bytes to XMSS^MT PublicKey.
+//DeserializeMT deserialized bytes to XMSS^MT publicKey.
 func DeserializeMT(key []byte) (*PublicKeyMT, error) {
 	if len(key) != 65 {
 		return nil, errors.New("invalid bytes length")
@@ -257,7 +247,7 @@ func VerifyMT(bsig, msg, bpk []byte) bool {
 
 type privKeyMT struct {
 	Index  uint64
-	Merkle []*Merkle
+	merkle []*merkle
 	H      uint32
 	D      uint32
 }
@@ -265,7 +255,7 @@ type privKeyMT struct {
 func (p *PrivKeyMT) exports() *privKeyMT {
 	return &privKeyMT{
 		Index:  p.index,
-		Merkle: p.merkle,
+		merkle: p.merkle,
 		H:      p.h,
 		D:      p.d,
 	}
@@ -273,7 +263,7 @@ func (p *PrivKeyMT) exports() *privKeyMT {
 
 func (p *PrivKeyMT) imports(s *privKeyMT) {
 	p.index = s.Index
-	p.merkle = s.Merkle
+	p.merkle = s.merkle
 	p.h = s.H
 	p.d = s.D
 }
@@ -307,3 +297,4 @@ func (p *PrivKeyMT) DecodeMsgpack(dec *msgpack.Decoder) error {
 	p.imports(&s)
 	return nil
 }
+*/
