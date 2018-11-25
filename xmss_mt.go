@@ -72,8 +72,8 @@ func (p *PrivKeyMT) SetLeafNo(n uint64) error {
 	return nil
 }
 
-//publicKey returns public key (merkle root) of XMSS^MT
-func (p *PrivKeyMT) publicKey() []byte {
+//PublicKey returns public key (merkle root) of XMSS^MT
+func (p *PrivKeyMT) PublicKey() []byte {
 	priv := p.merkle[p.d-1].priv
 	key := make([]byte, 1+n+n)
 	key[0] = (byte(p.h / 20)) << 4
@@ -184,7 +184,7 @@ func PublickeyMTHeader(h, d uint32) (byte, error) {
 	return header, nil
 }
 
-//Serialize returns serialized bytes of XMSS^MT publicKey.
+//Serialize returns serialized bytes of XMSS^MT PublicKey.
 func (p *PublicKeyMT) Serialize() ([]byte, error) {
 	var err error
 	key := make([]byte, 1+n+n)
@@ -199,7 +199,7 @@ func (p *PublicKeyMT) Serialize() ([]byte, error) {
 	return key, nil
 }
 
-//DeserializeMT deserialized bytes to XMSS^MT publicKey.
+//DeserializeMT deserialized bytes to XMSS^MT PublicKey.
 func DeserializeMT(key []byte) (*PublicKeyMT, error) {
 	if len(key) != 65 {
 		return nil, errors.New("invalid bytes length")

@@ -64,7 +64,7 @@ func (s *stack) initialize(start uint32, height uint32) {
 	s.stack = s.stack[:0]
 }
 
-func (s *stack) newleaf(priv *privateKey, isGo bool) {
+func (s *stack) newleaf(priv *PrivateKey, isGo bool) {
 	pk := make(wotsPubKey, wlen)
 	sk := make(wotsPrivKey, wlen)
 	for j := 0; j < wlen; j++ {
@@ -97,19 +97,19 @@ func (s *stack) newleaf(priv *privateKey, isGo bool) {
 	s.leaf++
 }
 
-func (s *stack) update(nn uint64, priv *privateKey) {
+func (s *stack) update(nn uint64, priv *PrivateKey) {
 	s.updateSub(nn, priv, func() {
 		s.newleaf(priv, false)
 	})
 }
 
-func (s *stack) goUpdate(nn uint64, priv *privateKey) {
+func (s *stack) goUpdate(nn uint64, priv *PrivateKey) {
 	s.updateSub(nn, priv, func() {
 		s.newleaf(priv, true)
 	})
 }
 
-func (s *stack) updateSub(nn uint64, priv *privateKey, newleaf func()) {
+func (s *stack) updateSub(nn uint64, priv *PrivateKey, newleaf func()) {
 	if len(s.stack) > 0 && (s.stack[len(s.stack)-1].height == s.height) {
 		return
 	}
@@ -166,7 +166,7 @@ type merkle struct {
 	tree   uint64
 }
 
-func (priv *privateKey) initMerkle(h uint32, layer uint32, tree uint64) {
+func (priv *PrivateKey) initMerkle(h uint32, layer uint32, tree uint64) {
 	m := &merkle{
 		leaf:   0,
 		height: h,
@@ -249,7 +249,7 @@ func (m *merkle) refreshAuth() {
 		}
 	}
 }
-func (priv *privateKey) build() {
+func (priv *PrivateKey) build() {
 	var i uint32
 	for i = 0; i < ((2 * priv.m.height) - 1); i++ {
 		var min uint32 = math.MaxUint32
@@ -266,7 +266,7 @@ func (priv *privateKey) build() {
 }
 
 //traverse refreshes auth and stacks and increment leaf number.
-func (priv *privateKey) traverse() {
+func (priv *PrivateKey) traverse() {
 	priv.m.refreshAuth()
 	priv.build()
 	priv.m.leaf++

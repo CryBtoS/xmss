@@ -35,35 +35,35 @@ type XMSSParameters struct {
 }
 
 // XMSS private key
-type privateKey struct {
-	*publicKey      // public part (pubPRF, root)
+type PrivateKey struct {
+	*PublicKey      // public part (pubPRF, root)
 	msgPRF  *prf    // prf for randomization of message digest
 	wotsPRF *prf    // prf for generating WOTS+ private keys
 	m       *merkle // state
 }
 
-type PrivateKey struct {
-	PublicKey
+type PrivateKeyExport struct {
+	PublicKeyExport
 	Index         uint32 // index of next unused WOTS+ private key
 	SecretKeyPRF  []byte // seed for randomization of message digest
 	SecretKeySeed []byte // seed for generating WOTS+ private keys
 }
 
 // XMSS public key
-type publicKey struct {
+type PublicKey struct {
 	XMSSParameters
 	// TODO: check if the byte array here is ok or a prf-object has to be created hier
 	publicSeed []byte // publicSeed for randomization of hashes
 	root       []byte // root of merkle tree
 }
 
-type PublicKey struct {
+type PublicKeyExport struct {
 	XMSSParameters
 	PublicSeed []byte // publicSeed for randomization of hashes
 	Root       []byte // root of merkle tree
 }
 
-func NewXMSSKeyPair(height uint32, privateSeed []byte) (*privateKey, *publicKey) {
+func NewXMSSKeyPair(height uint32, privateSeed []byte) (*PrivateKey, *PublicKey) {
 	mac := hmac.New(sha256.New, privateSeed)
 	if _, err := mac.Write([]byte{1}); err != nil {
 		panic(err)
@@ -82,13 +82,13 @@ func NewXMSSKeyPair(height uint32, privateSeed []byte) (*privateKey, *publicKey)
 	return NewXMSSKeyPairWithParams(height, secretKeySeed, secretKeyPRF, publicSeed, 0, 0)
 }
 
-func NewXMSSKeyPairWithParams(height uint32, secretKeySeed, secretKeyPRF, publicSeed []byte, layer uint32, tree uint64) (*privateKey, *publicKey) {
-	privateKey := new(privateKey)
-	publicKey := new(publicKey)
+func NewXMSSKeyPairWithParams(height uint32, secretKeySeed, secretKeyPRF, publicSeed []byte, layer uint32, tree uint64) (*PrivateKey, *PublicKey) {
+	privateKey := new(PrivateKey)
+	publicKey := new(PublicKey)
 	publicKey.XMSSParameters = XMSSParameters{Height: height}
 	publicKey.root = make([]byte, 32)
 	publicKey.publicSeed = publicSeed
-	privateKey.publicKey = publicKey
+	privateKey.PublicKey = publicKey
 	privateKey.msgPRF = newPRF(secretKeyPRF)
 	privateKey.wotsPRF = newPRF(secretKeySeed)
 	privateKey.initMerkle(height, layer, tree)
@@ -97,11 +97,11 @@ func NewXMSSKeyPairWithParams(height uint32, secretKeySeed, secretKeyPRF, public
 }
 
 // Public() returns the public key corresponding to priv
-func (priv *privateKey) Public() crypto.PublicKey {
-	return &priv.publicKey
+func (priv *PrivateKey) Public() crypto.PublicKey {
+	return &priv.PublicKey
 }
 
-func (priv *privateKey) Sign(msg []byte) ([]byte) {
+func (priv *PrivateKey) Sign(msg []byte) ([]byte) {
 	index := make([]byte, 32)
 	binary.BigEndian.PutUint32(index[28:], priv.m.leaf)
 	r := make([]byte, 32*3)
@@ -120,7 +120,7 @@ func (priv *privateKey) Sign(msg []byte) ([]byte) {
 	return result
 }
 
-func (priv *privateKey) createSignatureBody(hmsg []byte) *xmssSigBody {
+func (priv *PrivateKey) createSignatureBody(hmsg []byte) *xmssSigBody {
 	wsk := make(wotsPrivKey, wlen)
 	for i := range wsk {
 		wsk[i] = make([]byte, 32)
@@ -138,7 +138,7 @@ func (priv *privateKey) createSignatureBody(hmsg []byte) *xmssSigBody {
 	}
 }
 
-func (priv *privateKey) newWotsPrivKey(addrs addr, sk wotsPrivKey) {
+func (priv *PrivateKey) newWotsPrivKey(addrs addr, sk wotsPrivKey) {
 	s := make([]byte, 32)
 	priv.wotsPRF.sum(addrs, s)
 	p := newPRF(s)
@@ -147,9 +147,9 @@ func (priv *privateKey) newWotsPrivKey(addrs addr, sk wotsPrivKey) {
 	}
 }
 
-func (priv *privateKey) Export() *PrivateKey {
-	return &PrivateKey{
-		PublicKey: PublicKey{
+func (priv *PrivateKey) Export() *PrivateKeyExport {
+	return &PrivateKeyExport{
+		PublicKeyExport: PublicKeyExport{
 			XMSSParameters: priv.XMSSParameters,
 			PublicSeed:     priv.publicSeed,
 			Root:           priv.root,
@@ -160,7 +160,7 @@ func (priv *privateKey) Export() *PrivateKey {
 	}
 }
 
-func (priv *privateKey) Import(key *PrivateKey) {
+func (priv *PrivateKey) Import(key *PrivateKeyExport) {
 	priv.XMSSParameters = key.XMSSParameters
 	priv.publicSeed = key.PublicSeed
 	priv.root = key.Root
@@ -170,7 +170,7 @@ func (priv *privateKey) Import(key *PrivateKey) {
 	priv.initMerkle(priv.Height, 0, 0)
 }
 
-func (pub *publicKey) Verify(bsig, msg []byte) bool {
+func (pub *PublicKey) Verify(bsig, msg []byte) bool {
 	sig, err := bytes2sig(bsig, byte(pub.XMSSParameters.Height))
 	if err != nil {
 		return false
@@ -185,15 +185,15 @@ func (pub *publicKey) Verify(bsig, msg []byte) bool {
 	return bytes.Equal(root, pub.root)
 }
 
-func (pub *publicKey) Export() *PublicKey {
-	return &PublicKey{
+func (pub *PublicKey) Export() *PublicKeyExport {
+	return &PublicKeyExport{
 		XMSSParameters: pub.XMSSParameters,
 		PublicSeed:     pub.publicSeed,
 		Root:           pub.root,
 	}
 }
 
-func (pub *publicKey) Import(key *PublicKey) {
+func (pub *PublicKey) Import(key *PublicKeyExport) {
 	pub.Height = key.Height
 	pub.publicSeed = key.PublicSeed
 	pub.root = key.Root
