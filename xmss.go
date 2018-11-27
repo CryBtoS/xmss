@@ -36,7 +36,7 @@ type XMSSParameters struct {
 
 // XMSS private key
 type PrivateKey struct {
-	*PublicKey      // public part (pubPRF, root)
+	PublicKey       // public part (pubPRF, root)
 	msgPRF  *prf    // prf for randomization of message digest
 	wotsPRF *prf    // prf for generating WOTS+ private keys
 	m       *merkle // state
@@ -83,17 +83,19 @@ func NewXMSSKeyPair(height uint32, privateSeed []byte) (*PrivateKey, *PublicKey)
 }
 
 func NewXMSSKeyPairWithParams(height uint32, secretKeySeed, secretKeyPRF, publicSeed []byte, layer uint32, tree uint64) (*PrivateKey, *PublicKey) {
-	privateKey := new(PrivateKey)
-	publicKey := new(PublicKey)
-	publicKey.XMSSParameters = XMSSParameters{Height: height}
-	publicKey.root = make([]byte, 32)
-	publicKey.publicSeed = publicSeed
-	privateKey.PublicKey = publicKey
-	privateKey.msgPRF = newPRF(secretKeyPRF)
-	privateKey.wotsPRF = newPRF(secretKeySeed)
+	publicKey := PublicKey{
+		XMSSParameters: XMSSParameters{Height: height},
+		root:           make([]byte, 32),
+		publicSeed:     publicSeed,
+	}
+	privateKey := PrivateKey{
+		PublicKey: publicKey,
+		msgPRF:    newPRF(secretKeyPRF),
+		wotsPRF:   newPRF(secretKeySeed),
+	}
 	privateKey.initMerkle(height, layer, tree)
 
-	return privateKey, publicKey
+	return &privateKey, &publicKey
 }
 
 // Public() returns the public key corresponding to priv
