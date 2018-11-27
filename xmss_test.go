@@ -116,3 +116,28 @@ func TestXMSS(t *testing.T) {
 	}
 	runtime.GOMAXPROCS(npref)
 }
+
+func TestXMSSImport(t *testing.T) {
+	privKeyExport := &PrivateKeyExport{
+		PublicKeyExport: PublicKeyExport{
+			XMSSParameters: XMSSParameters{Height: 10},
+			PublicSeed:     []byte("TestPublicSeed"),
+			Root:           []byte("TestRoot"),
+		},
+		Index:         0,
+		SecretKeySeed: []byte("TestSecretKeySeed"),
+		SecretKeyPRF:  []byte("TestSecretKeyPRF"),
+	}
+
+	key := new(PrivateKey)
+	key.Import(privKeyExport)
+
+	pubKeyExport := &PublicKeyExport{
+		XMSSParameters: XMSSParameters{Height: 10},
+		PublicSeed: []byte("TestPublicSeed"),
+		Root: []byte("TestRoot"),
+	}
+
+	pubKey := new(PublicKey)
+	pubKey.Import(pubKeyExport)
+}
