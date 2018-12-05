@@ -166,11 +166,17 @@ func (priv *PrivateKey) Import(key *PrivateKeyExport) {
 	priv.XMSSParameters = key.XMSSParameters
 	priv.publicSeed = key.PublicSeed
 	priv.root = key.Root
-	priv.m = new(merkle)
-	priv.m.leaf = key.Index
 	priv.msgPRF = newPRF(key.SecretKeyPRF)
 	priv.wotsPRF = newPRF(key.SecretKeySeed)
 	priv.initMerkle(priv.Height, 0, 0)
+	if key.Index > 0 {
+		priv.m.leaf = key.Index - 1
+	} else {
+		priv.m.leaf = 0
+	}
+	priv.m.refreshAuth()
+	priv.build()
+	priv.m.leaf++
 }
 
 func (pub *PublicKey) Verify(bsig, msg []byte) bool {
