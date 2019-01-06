@@ -8,7 +8,6 @@ import (
 )
 
 var (
-	//OIDXMSSPublicKey = asn1.ObjectIdentifier{0, 4, 0, 127, 0, 15, 1, 1, 13, 2}
 	OIDBCXMSS = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 22554, 2, 2}
 )
 
@@ -86,10 +85,8 @@ type publicKeyInfo struct {
 func ParsePKIXPublicKey(der []byte) (pub interface{}, err error) {
 	var pki publicKeyInfo
 	if rest, err := asn1.Unmarshal(der, &pki); err != nil {
-		fmt.Printf("Error: %v\n", err)
 		return nil, err
 	} else if len(rest) != 0 {
-		fmt.Printf("len != 0\n")
 		return nil, asn1.SyntaxError{Msg: "trailing data"}
 	}
 	if pki.Algorithm.Algorithm.Equal(OIDBCXMSS) {

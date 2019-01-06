@@ -36,7 +36,7 @@ type XMSSParameters struct {
 
 // XMSS private key
 type PrivateKey struct {
-	PublicKey       // public part (pubPRF, root)
+	PublicKey       // public part (publicSeed, root, parameters)
 	msgPRF  *prf    // prf for randomization of message digest
 	wotsPRF *prf    // prf for generating WOTS+ private keys
 	m       *merkle // state
@@ -169,14 +169,8 @@ func (priv *PrivateKey) Import(key *PrivateKeyExport) {
 	priv.msgPRF = newPRF(key.SecretKeyPRF)
 	priv.wotsPRF = newPRF(key.SecretKeySeed)
 	priv.initMerkle(priv.Height, 0, 0)
-	priv.m.leaf = 0
-	if key.Index > 0 {
-		priv.m.leaf = key.Index - 1
-	}
-	priv.m.refreshAuth()
-	priv.build()
-	if key.Index > 0 {
-		priv.m.leaf++
+	for i := 0; i < int(key.Index); i++ {
+		priv.traverse()
 	}
 }
 
