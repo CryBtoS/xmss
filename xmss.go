@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Benjamin Schlosser
+// Copyright (c) 2019 Benjamin Schlosser
 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -52,7 +52,6 @@ type PrivateKeyExport struct {
 // XMSS public key
 type PublicKey struct {
 	XMSSParameters
-	// TODO: check if the byte array here is ok or a prf-object has to be created hier
 	publicSeed []byte // publicSeed for randomization of hashes
 	root       []byte // root of merkle tree
 }
