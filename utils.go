@@ -96,6 +96,45 @@ func parseXMSSPrivateKey(der []byte) (*PrivateKey, error) {
 	return key, nil
 }
 
+func MarshalPKCS8PrivateKey(key *PrivateKey) ([]byte, error) {
+	if key == nil {
+		return nil, errors.New("invalid xmss private key - it must be different from nil")
+	}
+	asn1Bytes, err := marshalXMSSPrivateKey(key)
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling XMSS private key to asn1 [%s]", err)
+	}
+
+	var pkcs8Key pkcs8
+	pkcs8Key.Version = 0
+	pkcs8Key.Algo.Algorithm = OIDBCXMSS
+	pkcs8Key.PrivateKey = asn1Bytes
+
+	pkcs8Bytes, err := asn1.Marshal(pkcs8Key)
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling XMSS private key to asn1 [%s]", err)
+	}
+	return pkcs8Bytes, nil
+}
+
+func marshalXMSSPrivateKey(key *PrivateKey) ([]byte, error) {
+	keyExport := key.Export()
+
+	pkcs8XMSSKey := pkcs8XMSSPrivateKey{
+		Version: 0,
+		Data: pkcs8XMSSPrivateKeyData{
+			Index: int(keyExport.Index),
+			SecretKeySeed: keyExport.SecretKeySeed,
+			SecretKeyPRF: keyExport.SecretKeyPRF,
+			PublicSeed: keyExport.PublicSeed,
+			Root: keyExport.Root,
+		},
+		BdsState: nil,
+	}
+
+	return asn1.Marshal(pkcs8XMSSKey)
+}
+
 type publicKeyInfo struct {
 	Raw       asn1.RawContent
 	Algorithm pkix.AlgorithmIdentifier

@@ -21,6 +21,7 @@
 package xmss
 
 import (
+	"bytes"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
@@ -185,7 +186,6 @@ func TestParseXMSSKeys(t *testing.T) {
 
 }
 
-
 func TestParsePKIXPublicKey(t *testing.T) {
 	pemCert, _ := pem.Decode([]byte(certPEM))
 	cert, err := x509.ParseCertificate(pemCert.Bytes)
@@ -206,5 +206,42 @@ func TestParsePKIXPublicKey(t *testing.T) {
 	}
 	if strings.ToUpper(hex.EncodeToString(publicKey.publicSeed)) != "9A27856CE5D6B915C734D0165AECCFE9BEBC95478AFDDB38C751A9A39669E575" {
 		t.Errorf("PrivateKey is not correct -> publicSeed: %X", publicKey.publicSeed)
+	}
+}
+
+func TestMarshalPKCS8PrivateKey(t *testing.T) {
+	seed, err := hex.DecodeString("5F706A93A124CB56BE67FF5F1133FD7EB62A36CB182AEF97B9559746DF3F1936")
+	if err != nil {
+		t.Fatal(err)
+	}
+	privKey, _ := NewXMSSKeyPair(10, seed)
+	privKeyExport := privKey.Export()
+	derData, err := MarshalPKCS8PrivateKey(privKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	privKey2, err := ParsePKCS8PrivateKey(derData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	privKey2Export := privKey2.(*PrivateKey).Export()
+	if privKeyExport.Index != privKey2Export.Index {
+		t.Errorf("Index is different: %d, %d", privKeyExport.Index, privKey2Export.Index)
+	}
+	if privKeyExport.Height != privKey2Export.Height {
+		t.Errorf("Height is different: %d, %d", privKeyExport.Height, privKey2Export.Height)
+	}
+	if !bytes.Equal(privKeyExport.Root, privKey2Export.Root) {
+		t.Errorf("Root is different: %v, %v", privKeyExport.Root, privKey2Export.Root)
+	}
+	if !bytes.Equal(privKeyExport.PublicSeed, privKey2Export.PublicSeed) {
+		t.Errorf("PublicSeed is different: %v, %v", privKeyExport.PublicSeed, privKey2Export.PublicSeed)
+	}
+	if !bytes.Equal(privKeyExport.SecretKeyPRF, privKey2Export.SecretKeyPRF) {
+		t.Errorf("SecretKeyPRF is different: %v, %v", privKeyExport.SecretKeyPRF, privKey2Export.SecretKeyPRF)
+	}
+	if !bytes.Equal(privKeyExport.SecretKeySeed, privKey2Export.SecretKeySeed) {
+		t.Errorf("SecretKeySeed is different: %v, %v", privKeyExport.SecretKeySeed, privKey2Export.SecretKeySeed)
 	}
 }
